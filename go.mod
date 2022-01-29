@@ -45,6 +45,7 @@ require (
 	github.com/miekg/dns v1.1.45
 	github.com/mittwald/go-powerdns v0.5.2
 	github.com/namedotcom/go v0.0.0-20180403034216-08470befbe04
+	github.com/netlify/open-api/v2 v2.8.0 // indirect
 	github.com/nrdcg/goinwx v0.8.1
 	github.com/oracle/oci-go-sdk/v32 v32.0.0
 	github.com/ovh/go-ovh v1.1.0
