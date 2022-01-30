@@ -12,8 +12,7 @@ import (
 	"github.com/go-openapi/strfmt"
 	"github.com/miekg/dns/dnsutil"
 
-	"github.com/go-openapi/runtime"
-	runtimeClient "github.com/go-openapi/runtime/client"
+	httptransport "github.com/go-openapi/runtime/client"
 
 	netlifyModels "github.com/netlify/open-api/v2/go/models"
 	netlifyPlumbing "github.com/netlify/open-api/v2/go/plumbing"
@@ -56,6 +55,7 @@ func init() {
 		RecordAuditor: AuditRecords,
 	}
 	providers.RegisterDomainServiceProviderType("NETLIFY", fns, features)
+	providers.RegisterCustomRecordType("NETLIFY", "NETLIFY", "")
 }
 
 // Creates the Netlify provider
@@ -66,21 +66,14 @@ func newNetlify(m map[string]string, metadata json.RawMessage) (providers.DNSSer
 
 	ctx := context.Background()
 
-	transport := runtimeClient.New(
+	transport := httptransport.New(
 		netlifyPlumbing.DefaultHost,
 		netlifyPlumbing.DefaultBasePath,
 		netlifyPlumbing.DefaultSchemes,
 	)
 
+	authInfo := httptransport.BearerToken(m["token"])
 	client := netlify.New(transport, strfmt.Default)
-
-	// Prepare the API token
-	authInfo := runtime.ClientAuthInfoWriterFunc(func(r runtime.ClientRequest, _ strfmt.Registry) error {
-		r.SetHeaderParam("User-Agent", "dnsconfig")
-		r.SetHeaderParam("Authorization", "Bearer "+m["token"])
-		return nil
-	})
-
 	ctx = netlifyContext.WithAuthInfo(ctx, authInfo)
 
 	api := &netlifyProvider{client: client}
@@ -122,7 +115,8 @@ func getRecords(api *netlifyProvider, name string) ([]*netlifyModels.DNSRecord, 
 	authInfo := netlifyContext.GetAuthInfo(ctx)
 
 	// Get the list of domains we have access to
-	zoneList, err := api.client.Operations.GetDNSZones(netlifyOperations.NewGetDNSZonesParams().WithContext(ctx), authInfo)
+	params := netlifyOperations.NewGetDNSZonesParams()
+	zoneList, err := api.client.Operations.GetDNSZones(params, authInfo)
 
 	if err != nil {
 		return nil, err
@@ -182,7 +176,8 @@ func (api *netlifyProvider) GetDomainCorrections(dc *models.DomainConfig) ([]*mo
 		corr := &models.Correction{
 			Msg: fmt.Sprintf("%s, Netlify DNSZoneID: %s", m.String(), id),
 			F: func() error {
-				res, err := api.client.Operations.DeleteDNSRecord(netlifyOperations.NewDeleteDNSRecordParams().WithContext(ctx).WithDNSRecordID(id), authInfo)
+				params := netlifyOperations.NewDeleteDNSRecordParams().WithDNSRecordID(id)
+				res, err := api.client.Operations.DeleteDNSRecord(params, authInfo)
 				if err != nil {
 					return err
 				}
