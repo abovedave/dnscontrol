@@ -4,34 +4,26 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net"
-	"net/http"
-	"time"
 
 	"github.com/StackExchange/dnscontrol/v3/models"
 	"github.com/StackExchange/dnscontrol/v3/pkg/diff"
 	"github.com/StackExchange/dnscontrol/v3/pkg/txtutil"
 	"github.com/StackExchange/dnscontrol/v3/providers"
-	"github.com/go-openapi/runtime"
 	"github.com/go-openapi/strfmt"
 	"github.com/miekg/dns/dnsutil"
 
-	openapiClient "github.com/go-openapi/runtime/client"
+	runtimeClient "github.com/go-openapi/runtime/client"
 
-	netlifyModels "github.com/netlify/open-api/go/models"
-	netlifyOperations "github.com/netlify/open-api/go/plumbing/operations"
-	netlify "github.com/netlify/open-api/go/porcelain"
-	netlifyContext "github.com/netlify/open-api/go/porcelain/context"
+	netlifyModels "github.com/netlify/open-api/v2/go/models"
+	netlifyPlumbing "github.com/netlify/open-api/v2/go/plumbing"
+	netlifyOperations "github.com/netlify/open-api/v2/go/plumbing/operations"
+	netlify "github.com/netlify/open-api/v2/go/porcelain"
+	netlifyContext "github.com/netlify/open-api/v2/go/porcelain/context"
 )
 
 type netlifyProvider struct {
 	client *netlify.Netlify
 }
-
-const (
-	apiHostname = "api.netlify.com"
-	apiPath     = "/api/v1"
-)
 
 var features = providers.DocumentationNotes{
 	providers.CanUseAlias:            providers.Cannot(),
@@ -59,8 +51,8 @@ var defaultNameServerNames = []string{
 // Register with the dnscontrol system
 func init() {
 	fns := providers.DspFuncs{
-		Initializer: newNetlify,
-		//RecordAuditor: AuditRecords,
+		Initializer:   newNetlify,
+		RecordAuditor: AuditRecords,
 	}
 	providers.RegisterDomainServiceProviderType("NETLIFY", fns, features)
 }
@@ -73,40 +65,18 @@ func newNetlify(m map[string]string, metadata json.RawMessage) (providers.DNSSer
 
 	ctx := context.Background()
 
-	// add OpenAPI Runtime credentials to context
-	creds := runtime.ClientAuthInfoWriterFunc(func(r runtime.ClientRequest, _ strfmt.Registry) error {
-		r.SetHeaderParam("Authorization", "Bearer "+m["token"])
-		return nil
-	})
-	ctx = netlifyContext.WithAuthInfo(ctx, creds)
+	ct := runtimeClient.New(
+		netlifyPlumbing.DefaultHost,
+		netlifyPlumbing.DefaultBasePath,
+		netlifyPlumbing.DefaultSchemes,
+	)
 
-	// create an OpenAPI transport
-	transport := openapiClient.NewWithClient(apiHostname, apiPath, []string{"https"}, httpClient())
-	client := netlify.New(transport, strfmt.Default)
-	ctx = context.WithValue(ctx, m["token"], client)
+	client := netlify.New(ct, strfmt.Default)
+	ctx = netlifyContext.WithAuthInfo(ctx, runtimeClient.BearerToken(m["token"]))
 
 	api := &netlifyProvider{client: client}
 
 	return api, nil
-}
-
-func httpClient() *http.Client {
-	return &http.Client{
-		Transport: &http.Transport{
-			Proxy: http.ProxyFromEnvironment,
-			DialContext: (&net.Dialer{
-				Timeout:   30 * time.Second,
-				KeepAlive: 30 * time.Second,
-				DualStack: true,
-			}).DialContext,
-			MaxIdleConns:          100,
-			IdleConnTimeout:       90 * time.Second,
-			TLSHandshakeTimeout:   10 * time.Second,
-			ExpectContinueTimeout: 1 * time.Second,
-			MaxIdleConnsPerHost:   -1,
-			DisableKeepAlives:     true,
-		},
-	}
 }
 
 // GetNameservers returns the nameservers for domain.
