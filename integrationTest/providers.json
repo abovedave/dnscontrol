@@ -142,6 +142,10 @@
     "customer-number": "$NETCUP_CUSTOMER_NUMBER",
     "domain": "$NETCUP_DOMAIN"
   },
+  "NETLIFY": {
+    "domain": "$NETLIFY_DOMAIN",
+    "token": "$NETLIFY_TOKEN"
+  },
   "NS1": {
     "api_token": "$NS1_TOKEN",
     "domain": "$NS1_DOMAIN"

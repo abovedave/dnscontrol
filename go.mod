@@ -31,6 +31,8 @@ require (
 	github.com/fatih/color v1.13.0 // indirect
 	github.com/go-acme/lego v2.7.2+incompatible
 	github.com/go-gandi/go-gandi v0.0.0-20211124085723-a737785a1af0
+	github.com/go-openapi/runtime v0.19.24
+	github.com/go-openapi/strfmt v0.19.11
 	github.com/gobwas/glob v0.2.4-0.20181002190808-e7a84e9525fe
 	github.com/gofrs/uuid v4.0.0+incompatible // indirect
 	github.com/google/go-github/v35 v35.3.0
@@ -45,6 +47,7 @@ require (
 	github.com/miekg/dns v1.1.45
 	github.com/mittwald/go-powerdns v0.5.2
 	github.com/namedotcom/go v0.0.0-20180403034216-08470befbe04
+	github.com/netlify/open-api/v2 v2.8.0
 	github.com/nrdcg/goinwx v0.8.1
 	github.com/oracle/oci-go-sdk/v32 v32.0.0
 	github.com/ovh/go-ovh v1.1.0

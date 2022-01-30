@@ -376,6 +376,9 @@ var NAPTR = recordBuilder('NAPTR', {
     },
 });
 
+// NETLIFY(name,target, recordModifiers...)
+var NETLIFY = recordBuilder('NETLIFY');
+
 // SOA(name,ns,mbox,refresh,retry,expire,minimum, recordModifiers...)
 var SOA = recordBuilder('SOA', {
   args: [
