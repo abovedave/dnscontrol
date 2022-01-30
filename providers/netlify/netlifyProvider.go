@@ -12,6 +12,7 @@ import (
 	"github.com/go-openapi/strfmt"
 	"github.com/miekg/dns/dnsutil"
 
+	"github.com/go-openapi/runtime"
 	runtimeClient "github.com/go-openapi/runtime/client"
 
 	netlifyModels "github.com/netlify/open-api/v2/go/models"
@@ -65,14 +66,22 @@ func newNetlify(m map[string]string, metadata json.RawMessage) (providers.DNSSer
 
 	ctx := context.Background()
 
-	ct := runtimeClient.New(
+	transport := runtimeClient.New(
 		netlifyPlumbing.DefaultHost,
 		netlifyPlumbing.DefaultBasePath,
 		netlifyPlumbing.DefaultSchemes,
 	)
 
-	client := netlify.New(ct, strfmt.Default)
-	ctx = netlifyContext.WithAuthInfo(ctx, runtimeClient.BearerToken(m["token"]))
+	client := netlify.New(transport, strfmt.Default)
+
+	// Prepare the API token
+	authInfo := runtime.ClientAuthInfoWriterFunc(func(r runtime.ClientRequest, _ strfmt.Registry) error {
+		r.SetHeaderParam("User-Agent", "dnsconfig")
+		r.SetHeaderParam("Authorization", "Bearer "+m["token"])
+		return nil
+	})
+
+	ctx = netlifyContext.WithAuthInfo(ctx, authInfo)
 
 	api := &netlifyProvider{client: client}
 
@@ -86,9 +95,6 @@ func (api *netlifyProvider) GetNameservers(domain string) ([]*models.Nameserver,
 
 // GetZoneRecords gets the records of a zone and returns them in RecordConfig format.
 func (api *netlifyProvider) GetZoneRecords(domain string) (models.Records, error) {
-	//ctx := context.Background()
-	//authInfo := netlifyContext.GetAuthInfo(ctx)
-
 	// Loop over the Netlify records and convert them to native
 	records, err := getRecords(api, domain)
 	if err != nil {
@@ -117,6 +123,7 @@ func getRecords(api *netlifyProvider, name string) ([]*netlifyModels.DNSRecord, 
 
 	// Get the list of domains we have access to
 	zoneList, err := api.client.Operations.GetDNSZones(netlifyOperations.NewGetDNSZonesParams().WithContext(ctx), authInfo)
+
 	if err != nil {
 		return nil, err
 	}
@@ -173,7 +180,7 @@ func (api *netlifyProvider) GetDomainCorrections(dc *models.DomainConfig) ([]*mo
 	for _, m := range delete {
 		id := m.Existing.Original.(*netlifyModels.DNSRecord).ID
 		corr := &models.Correction{
-			Msg: fmt.Sprintf("%s, Netlify DNSZoneID: %d", m.String(), id),
+			Msg: fmt.Sprintf("%s, Netlify DNSZoneID: %s", m.String(), id),
 			F: func() error {
 				res, err := api.client.Operations.DeleteDNSRecord(netlifyOperations.NewDeleteDNSRecordParams().WithContext(ctx).WithDNSRecordID(id), authInfo)
 				if err != nil {
@@ -208,7 +215,7 @@ func (api *netlifyProvider) GetDomainCorrections(dc *models.DomainConfig) ([]*mo
 
 		corrections = append(corrections,
 			&models.Correction{
-				Msg: m.String(),
+				Msg: fmt.Sprintf("%s, Netlify DNSZoneID: %s", m.String(), id),
 				F: func() error {
 					res, err := api.client.Operations.DeleteDNSRecord(netlifyOperations.NewDeleteDNSRecordParams().WithContext(ctx).WithDNSRecordID(id), authInfo)
 					if err != nil {
@@ -218,7 +225,7 @@ func (api *netlifyProvider) GetDomainCorrections(dc *models.DomainConfig) ([]*mo
 				},
 			},
 			&models.Correction{
-				Msg: m.String(),
+				Msg: fmt.Sprintf("%s, Netlify DNSZoneID: %s", m.String(), id),
 				F: func() error {
 					res, err := api.client.Operations.CreateDNSRecord(netlifyOperations.NewCreateDNSRecordParams().WithContext(ctx).WithDNSRecord(req), authInfo)
 					if err != nil {
