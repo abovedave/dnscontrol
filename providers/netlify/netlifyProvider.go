@@ -1,7 +1,6 @@
 package netlify
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 
@@ -18,11 +17,10 @@ import (
 	netlifyPlumbing "github.com/netlify/open-api/v2/go/plumbing"
 	netlifyOperations "github.com/netlify/open-api/v2/go/plumbing/operations"
 	netlify "github.com/netlify/open-api/v2/go/porcelain"
-	netlifyContext "github.com/netlify/open-api/v2/go/porcelain/context"
 )
 
 type netlifyProvider struct {
-	client *netlify.Netlify
+	AccountToken string
 }
 
 var features = providers.DocumentationNotes{
@@ -58,25 +56,26 @@ func init() {
 	providers.RegisterCustomRecordType("NETLIFY", "NETLIFY", "")
 }
 
-// Creates the Netlify provider
-func newNetlify(m map[string]string, metadata json.RawMessage) (providers.DNSServiceProvider, error) {
-	if m["token"] == "" {
-		return nil, fmt.Errorf("no Netlify token provided")
-	}
-
-	ctx := context.Background()
-
+func (c *netlifyProvider) getClient() *netlify.Netlify {
 	transport := httptransport.New(
 		netlifyPlumbing.DefaultHost,
 		netlifyPlumbing.DefaultBasePath,
 		netlifyPlumbing.DefaultSchemes,
 	)
 
-	authInfo := httptransport.BearerToken(m["token"])
 	client := netlify.New(transport, strfmt.Default)
-	ctx = netlifyContext.WithAuthInfo(ctx, authInfo)
 
-	api := &netlifyProvider{client: client}
+	return client
+}
+
+// Creates the Netlify provider
+func newNetlify(m map[string]string, metadata json.RawMessage) (providers.DNSServiceProvider, error) {
+	api := &netlifyProvider{}
+	api.AccountToken = m["token"]
+
+	if api.AccountToken == "" {
+		return nil, fmt.Errorf("no Netlify Personal Access Token provided")
+	}
 
 	return api, nil
 }
@@ -111,12 +110,12 @@ func (api *netlifyProvider) GetZoneRecords(domain string) (models.Records, error
 
 // Gets records for a passed domain by looping through all the zones we have access to from our token
 func getRecords(api *netlifyProvider, name string) ([]*netlifyModels.DNSRecord, error) {
-	ctx := context.Background()
-	authInfo := netlifyContext.GetAuthInfo(ctx)
+	c := api.getClient()
+	authInfo := httptransport.BearerToken(api.AccountToken)
 
 	// Get the list of domains we have access to
 	params := netlifyOperations.NewGetDNSZonesParams()
-	zoneList, err := api.client.Operations.GetDNSZones(params, authInfo)
+	zoneList, err := c.Operations.GetDNSZones(params, authInfo)
 
 	if err != nil {
 		return nil, err
@@ -131,7 +130,7 @@ func getRecords(api *netlifyProvider, name string) ([]*netlifyModels.DNSRecord, 
 
 		// Look for a domain which matches what we're looking for
 		if zone.Name == name {
-			rs, err := api.client.Operations.GetDNSRecords(netlifyOperations.NewGetDNSRecordsParamsWithContext(ctx).WithZoneID(zone.ID), authInfo)
+			rs, err := c.Operations.GetDNSRecords(netlifyOperations.NewGetDNSRecordsParams().WithZoneID(zone.ID), authInfo)
 			if err != nil {
 				return nil, err
 			}
@@ -149,8 +148,9 @@ func getRecords(api *netlifyProvider, name string) ([]*netlifyModels.DNSRecord, 
 
 // GetDomainCorrections returns corrections that update a domain.
 func (api *netlifyProvider) GetDomainCorrections(dc *models.DomainConfig) ([]*models.Correction, error) {
-	ctx := context.Background()
-	authInfo := netlifyContext.GetAuthInfo(ctx)
+	c := api.getClient()
+	authInfo := httptransport.BearerToken(api.AccountToken)
+
 	dc.Punycode()
 
 	existingRecords, err := api.GetZoneRecords(dc.Name)
@@ -177,7 +177,7 @@ func (api *netlifyProvider) GetDomainCorrections(dc *models.DomainConfig) ([]*mo
 			Msg: fmt.Sprintf("%s, Netlify DNSZoneID: %s", m.String(), id),
 			F: func() error {
 				params := netlifyOperations.NewDeleteDNSRecordParams().WithDNSRecordID(id)
-				res, err := api.client.Operations.DeleteDNSRecord(params, authInfo)
+				res, err := c.Operations.DeleteDNSRecord(params, authInfo)
 				if err != nil {
 					return err
 				}
@@ -193,7 +193,7 @@ func (api *netlifyProvider) GetDomainCorrections(dc *models.DomainConfig) ([]*mo
 		corr := &models.Correction{
 			Msg: m.String(),
 			F: func() error {
-				res, err := api.client.Operations.CreateDNSRecord(netlifyOperations.NewCreateDNSRecordParams().WithContext(ctx).WithDNSRecord(req), authInfo)
+				res, err := c.Operations.CreateDNSRecord(netlifyOperations.NewCreateDNSRecordParams().WithDNSRecord(req), authInfo)
 				if err != nil {
 					return err
 				}
@@ -212,7 +212,7 @@ func (api *netlifyProvider) GetDomainCorrections(dc *models.DomainConfig) ([]*mo
 			&models.Correction{
 				Msg: fmt.Sprintf("%s, Netlify DNSZoneID: %s", m.String(), id),
 				F: func() error {
-					res, err := api.client.Operations.DeleteDNSRecord(netlifyOperations.NewDeleteDNSRecordParams().WithContext(ctx).WithDNSRecordID(id), authInfo)
+					res, err := c.Operations.DeleteDNSRecord(netlifyOperations.NewDeleteDNSRecordParams().WithDNSRecordID(id), authInfo)
 					if err != nil {
 						return err
 					}
@@ -222,7 +222,7 @@ func (api *netlifyProvider) GetDomainCorrections(dc *models.DomainConfig) ([]*mo
 			&models.Correction{
 				Msg: fmt.Sprintf("%s, Netlify DNSZoneID: %s", m.String(), id),
 				F: func() error {
-					res, err := api.client.Operations.CreateDNSRecord(netlifyOperations.NewCreateDNSRecordParams().WithContext(ctx).WithDNSRecord(req), authInfo)
+					res, err := c.Operations.CreateDNSRecord(netlifyOperations.NewCreateDNSRecordParams().WithDNSRecord(req), authInfo)
 					if err != nil {
 						return err
 					}
